@@ -1,0 +1,5 @@
+# Additional exact clinical PERSON-NER exceptions. Built-in terms remain active.
+# Copy to clinical_terms.txt and set CLINICAL_TERMS_FILE=config/clinical_terms.txt.
+sacubitril
+dulaglutide
+N-terminal pro-B-type natriuretic peptide
