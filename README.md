@@ -1,4 +1,4 @@
-# Clarity - Groq API edition
+# Patient Scope 
 
 A patient-specific medical records chatbot using React + Vite, FastAPI, Groq,
 local Hugging Face embeddings, and MongoDB Atlas. It answers from each account's
@@ -7,7 +7,7 @@ uploaded records with citations. It is a record assistant, not a diagnostic tool
 The source directory contains only:
 
 ```text
-clarity/
+Patient Scope/
   frontend/     React source, public assets, package files and Vite configuration
   backend/      API source, glossary configuration, dependency files and .env.example
   README.md     Setup and run commands
@@ -24,7 +24,7 @@ Use Windows PowerShell with Python 3.11 and Node.js 22.12 or newer.
 Replace the path with your extracted project location.
 
 ```powershell
-cd "D:\Projects - AI\Clarity\backend"
+cd "D:\Projects - AI\Patient Scope\backend"
 py -3.11 -m venv .venv
 & ".\.venv\Scripts\python.exe" -m pip install --upgrade pip "setuptools>=77.0.3"
 & ".\.venv\Scripts\python.exe" -m pip install torch==2.14.1 --index-url https://download.pytorch.org/whl/cpu
@@ -135,7 +135,7 @@ For subsequent runs, this is the only backend command required.
 ## 6. Start the frontend in a second terminal
 
 ```powershell
-cd "D:\Projects - AI\Clarity\frontend"
+cd "D:\Projects - AI\Patient Scope\frontend"
 npm ci
 npm run dev
 ```
