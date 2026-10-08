@@ -1,209 +1,214 @@
-# Clarity - Groq API edition
+# PatientScope
 
-A patient-specific medical records chatbot using React + Vite, FastAPI, Groq,
-local Hugging Face embeddings, and MongoDB Atlas. It answers from each account's
-uploaded records with citations. It is a record assistant, not a diagnostic tool.
+### Patient-specific medical records assistant · Retrieval-Augmented Generation
 
-The source directory contains only:
+**PatientScope** is a full-stack medical-records question-answering application that helps users find information in their own uploaded clinical documents. It uses patient-scoped retrieval, local embeddings, LangGraph orchestration, and Groq-hosted generation to produce answers grounded in document evidence—with source references or a controlled fallback when evidence is insufficient.
+
+> **Project status:** Functional development prototype. Further end-to-end acceptance, privacy, security, and deployment validation are required before use with real patient information. **Not a diagnostic, prescribing, or clinical decision-making system.**
+
+## At a glance
+
+| Layer                  | Technology                                                                              |
+| ---------------------- | --------------------------------------------------------------------------------------- |
+| Frontend               | React, Vite                                                                             |
+| API                    | Python, FastAPI, Pydantic                                                               |
+| Workflow orchestration | LangGraph                                                                               |
+| Generation             | Groq API (default `openai/gpt-oss-20b`)                                                 |
+| Embeddings             | Hugging Face `sentence-transformers/all-MiniLM-L6-v2` (384 dimensions, local inference) |
+| Data and retrieval     | MongoDB Atlas, Atlas Vector Search                                                      |
+| Authentication         | Argon2 password hashing, HS256 JWT                                                      |
+| Identifier masking     | Microsoft Presidio, spaCy                                                               |
+| File extraction        | pypdf, python-docx, TXT decoding                                                        |
+
+## Features
+
+- **Patient accounts:** Registration, login, authenticated profile, and ownership checks for protected operations.
+- **Medical-record uploads:** PDF, DOCX, and TXT ingestion with size/content validation, automatic or manual categorization, record status, filtering, metadata inspection, and deletion.
+- **Clinical question answering:** Questions about prescriptions, laboratory values, clinical notes, claims, procedures, and follow-up instructions.
+- **Longitudinal queries:** Compare recorded values across dates and request summaries within configured context limits.
+- **Evidence-grounded output:** Source IDs are validated; unsupported, malformed, or insufficiently evidenced answers fall back rather than inventing a response.
+- **Patient isolation:** The server derives patient identity from the verified token; retrieval filters and post-retrieval checks enforce ownership.
+- **Privacy controls:** Selected identifiers are masked before embedding/storage of text chunks; clinical terminology helps reduce inappropriate masking.
+- **Traceable operations:** Request identifiers, timings, and structured error responses facilitate debugging.
+
+## Architecture
+
+```mermaid
+flowchart TD
+    UI[React + Vite] --> API[FastAPI]
+    API --> AUTH[JWT authentication / patient scope]
+    AUTH --> INGEST[Upload and ingestion]
+    AUTH --> QUERY[Questions and summaries]
+    INGEST --> EXTRACT[Extract and classify]
+    EXTRACT --> MASK[Presidio identifier masking]
+    MASK --> CHUNK[Chunk and embed locally]
+    CHUNK --> DB[(MongoDB Atlas + Vector Search)]
+    QUERY --> ROUTE{Request type}
+    ROUTE -->|Specific question| SEARCH[Patient-filtered vector retrieval]
+    ROUTE -->|Summary| ALL[Bounded patient-owned chunk retrieval]
+    DB --> SEARCH
+    DB --> ALL
+    SEARCH --> CHECK[Relevance and ownership validation]
+    CHECK --> GEN[Groq structured generation]
+    ALL --> GEN
+    GEN --> VALIDATE[Evidence, source and numeric validation]
+    VALIDATE --> OUT[Answer + sources or safe fallback]
+```
+
+### Document ingestion
+
+1. Validate file type, size, MIME information and extracted text.
+2. Extract text and infer a document category (or honor an explicitly selected category).
+3. Mask selected identifiers with Presidio and spaCy.
+4. Split sanitized text into chunks (default **800 characters**, **120-character overlap**).
+5. Create 384-dimensional local embeddings and store patient-owned metadata, chunks, and vectors in MongoDB.
+6. Mark processing as complete, or record failure and clean up partial chunks.
+
+Supported categories include `prescription`, `lab_report`, `clinical_note`, `claim_document`, `diagnostic_report`, `discharge_summary`, and `other`.
+
+### Question-answering workflow
+
+1. Verify the JWT and resolve the patient on the server.
+2. Sanitize and analyze the user's question and optional document-type filter.
+3. Retrieve candidate chunks using **patient-filtered Atlas Vector Search**.
+4. Recheck ownership, completed status, relevance and requested document type.
+5. Use LangGraph to coordinate evidence checks, bounded query rewriting, generation and validation.
+6. Reject unsupported citations, suspicious output or inadequately supported facts.
+7. Return a cited answer, or: **“The requested information is not available in your uploaded clinical records.”**
+
+Typical retrieval configuration: up to **8 results**, **160 candidates**, and a **0.55 relevance threshold**. These are tunable parameters, not accuracy claims. Query rewriting is bounded to **two rewrites**, with at most **one additional generation attempt** after validation failure.
+
+**Summaries follow a separate path.** Explicit summary requests fetch bounded sets of completed patient-owned chunks instead of relying on top-K semantic retrieval. Current summary limits include up to **30 documents** and **1,000 candidate chunks**, subject to the configured context-size limit. Oversized summaries receive a controlled error.
+
+## Repository layout
 
 ```text
-clarity/
-  frontend/     React source, public assets, package files and Vite configuration
-  backend/      API source, glossary configuration, dependency files and .env.example
-  README.md     Setup and run commands
+PatientScope/
+├── backend/
+│   ├── app/
+│   │   ├── api/             # Authentication, records, chat, health routes
+│   │   ├── auth/            # Password hashing and JWT security
+│   │   ├── database/        # Persistence and ownership-aware repositories
+│   │   ├── rag/             # LangGraph state, nodes and routing
+│   │   ├── schemas/         # Request, response and model contracts
+│   │   ├── services/        # Extraction, privacy, embeddings, retrieval
+│   │   ├── config.py
+│   │   └── main.py
+│   ├── config/             # Optional clinical terminology extensions
+│   ├── .env.example
+│   ├── pyproject.toml
+│   └── requirements.lock
+├── frontend/
+│   ├── src/
+│   ├── package.json
+│   └── vite.config.js
+└── README.md
 ```
 
-No setup scripts, Docker files, reports, duplicate documentation, tests, model
-weights, virtual environments, node_modules, or compiled frontend are included.
-The original working project is preserved separately. Running the commands below
-creates the necessary generated files inside frontend or backend, never at root.
+## Local setup
 
-## 1. Requirements and backend dependencies
+### Prerequisites
 
-Use Windows PowerShell with Python 3.11 and Node.js 22.12 or newer.
-Replace the path with your extracted project location.
+- Python and Node.js/npm, with compatible versions for the dependency manifests.
+- MongoDB Atlas cluster and an Atlas Vector Search index.
+- Groq API key.
+- Internet access on initial embedding-model download; cached embeddings can later run locally.
 
-```powershell
-cd "D:\Projects - AI\Clarity\backend"
-py -3.11 -m venv .venv
-& ".\.venv\Scripts\python.exe" -m pip install --upgrade pip "setuptools>=77.0.3"
-& ".\.venv\Scripts\python.exe" -m pip install torch==2.14.1 --index-url https://download.pytorch.org/whl/cpu
-& ".\.venv\Scripts\python.exe" -m pip install -c requirements.lock -c requirements-huggingface.lock -e ".[huggingface]"
-& ".\.venv\Scripts\python.exe" -m pip install -c requirements.lock https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
-```
+### 1. Configure the backend
 
-The virtual environment isolates Python packages. CPU PyTorch and sentence-transformers
-provide local embeddings. The spaCy model supports personal identifier masking.
-Using the virtualenv executable directly does not require PowerShell activation.
-
-## 2. Configure backend secrets
-
-If you already have backend/.env, preserve it and skip copying the example.
-For a fresh installation:
+From the repository root on Windows PowerShell:
 
 ```powershell
+cd backend
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.lock
 Copy-Item .env.example .env
-& ".\.venv\Scripts\python.exe" -c "import secrets; print(secrets.token_urlsafe(48))"
-notepad .env
 ```
 
-Set MONGODB_URI to your Atlas connection string, JWT_SECRET to the generated
-value, and GROQ_API_KEY to your own Groq key. Keep these only in backend/.env.
-Allow your current IP in Atlas Network Access and give the database user the
-permissions required to create collections and indexes.
+Edit `backend/.env` and supply **your own** values (never commit this file):
 
-The defaults use sentence-transformers/all-MiniLM-L6-v2 with 384 dimensions.
-No Hugging Face token is needed for this public model. LLM_API_KEY,
-HUGGINGFACE_TOKEN and EMBEDDING_API_KEY can remain empty.
-
-For an existing database, preserve VECTOR_INDEX_NAME from your existing .env.
-Never mix vectors from different embedding models in one index; select a new
-index and re-upload records when changing embedding models.
-
-## 3. Download and cache the embedding model
-
-Run from backend. This command downloads only model weights; it sends no records.
-
-```powershell
-& ".\.venv\Scripts\python.exe" -c "from app.config import Settings; from app.services.embeddings import HuggingFaceEmbeddingService; settings=Settings(); settings.embedding_local_files_only=False; HuggingFaceEmbeddingService(settings).client(); print('Model cached and embedding dimensions verified.')"
+```dotenv
+MONGODB_URI=your_private_atlas_connection_string
+MONGODB_DB_NAME=medical_rag
+JWT_SECRET=generate_a_random_secret_of_at_least_32_bytes
+GROQ_API_KEY=your_private_groq_key
+LLM_PROVIDER=groq
+LLM_MODEL=openai/gpt-oss-20b
+EMBEDDING_PROVIDER=huggingface
+EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+EMBEDDING_DIMENSIONS=384
+VECTOR_INDEX_NAME=medical_chunks_hf_384
+MAX_CONTEXT_CHARS=24000
 ```
 
-It creates the configured models/embeddings cache. Startup and subsequent queries
-use that cache with EMBEDDING_LOCAL_FILES_ONLY=true. If moving from your previous
-installation, you can copy its backend/models folder instead of downloading again.
+Create the MongoDB Atlas vector index according to the application's index setup: vector field `embedding`, **384 dimensions**, cosine similarity, and filter fields `patient_id`, `document_type`, `document_id`. Wait until the index is queryable. Index configuration must match the embedding model.
 
-## 4. Create MongoDB indexes
+### 2. Run the API
 
-Run this explicit command block from backend. It creates the unique patient email
-index, document ownership indexes, and the patient-filtered Atlas vector index.
-It checks an existing vector index instead of replacing it or deleting records.
+From `backend/` with the virtual environment active:
 
 ```powershell
-@'
-import asyncio
-from pymongo.operations import SearchIndexModel
-from app.config import Settings
-from app.database.mongodb import MongoDatabase
-
-async def main():
-    settings = Settings()
-    database = MongoDatabase(settings)
-    try:
-        await database.ping()
-        await database.ensure_indexes()
-        definition = {"fields": [
-            {"type": "vector", "path": "embedding", "numDimensions": settings.embedding_dimensions, "similarity": "cosine"},
-            {"type": "filter", "path": "patient_id"},
-            {"type": "filter", "path": "document_type"},
-            {"type": "filter", "path": "document_id"}
-        ]}
-        cursor = await database.db.medical_chunks.list_search_indexes()
-        indexes = await cursor.to_list(None)
-        existing = next((i for i in indexes if i["name"] == settings.vector_index_name), None)
-        if existing:
-            stored = existing.get("latestDefinition") or existing.get("definition") or {}
-            fields = stored.get("fields", [])
-            vector = next((f for f in fields if f.get("type") == "vector" and f.get("path") == "embedding"), None)
-            filters = {f.get("path") for f in fields if f.get("type") == "filter"}
-            if not vector or vector.get("numDimensions") != settings.embedding_dimensions or vector.get("similarity") != "cosine" or not {"patient_id", "document_type", "document_id"} <= filters:
-                raise ValueError("Existing index is incompatible. Use a new VECTOR_INDEX_NAME; do not overwrite the old index.")
-            print("Existing vector index verified. Queryable:", existing.get("queryable"))
-        else:
-            name = await database.db.medical_chunks.create_search_index(SearchIndexModel(definition=definition, name=settings.vector_index_name, type="vectorSearch"))
-            print("Created vector index:", name)
-        print("Wait until Atlas shows the vector index as queryable before asking questions.")
-    finally:
-        await database.close()
-
-asyncio.run(main())
-'@ | & ".\.venv\Scripts\python.exe" -
+python -m uvicorn app.main:app --reload --port 8000
 ```
 
-This pipes the visible Python code directly to Python; it does not create a .py
-setup script. Run once on a fresh database or after deliberately changing index
-configuration. Normal server startup also ensures the regular database indexes.
+API docs: `http://localhost:8000/docs` · Health: `http://localhost:8000/health` · Readiness: `http://localhost:8000/ready`
 
-## 5. Start the backend
+### 3. Run the frontend
 
-```powershell
-& ".\.venv\Scripts\python.exe" -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log
-```
-
-Keep this terminal open. API documentation is at http://127.0.0.1:8000/docs.
-For subsequent runs, this is the only backend command required.
-
-## 6. Start the frontend in a second terminal
+In another terminal, from the repository root:
 
 ```powershell
-cd "D:\Projects - AI\Clarity\frontend"
+cd frontend
 npm ci
 npm run dev
 ```
 
-npm ci creates frontend/node_modules using the pinned package lock. Open
-http://localhost:5173. Vite forwards API requests to the backend on port 8000.
-For subsequent runs, only npm run dev is needed. Never put backend keys in React.
+Open `http://localhost:5173`. The Vite development configuration proxies API requests to FastAPI. To create a production frontend build, run `npm run build`; the backend can serve the built frontend after restart.
 
-## 7. Optional production frontend build
+> The steps above follow the documented directory and configuration conventions. They have not been re-executed against a fresh checkout as part of this README rewrite. If dependencies or entry points differ in your latest source tree, use the checked-in manifests and application startup configuration.
 
-From frontend, run:
+## API overview
 
-```powershell
-npm run build
-```
+| Method   | Endpoint                          | Purpose                        |
+| -------- | --------------------------------- | ------------------------------ |
+| `POST`   | `/api/v1/auth/register`           | Register patient               |
+| `POST`   | `/api/v1/auth/login`              | Obtain access token            |
+| `GET`    | `/api/v1/auth/me`                 | Current account                |
+| `POST`   | `/api/v1/documents/upload`        | Upload and process record      |
+| `GET`    | `/api/v1/documents`               | List owned records             |
+| `GET`    | `/api/v1/documents/{document_id}` | Owned document metadata        |
+| `DELETE` | `/api/v1/documents/{document_id}` | Delete document and its chunks |
+| `POST`   | `/api/v1/chat/query`              | Ask records-grounded question  |
+| `GET`    | `/health`, `/ready`               | Service checks                 |
 
-This creates frontend/dist. Restart the backend, then open http://localhost:8000.
-The source archive excludes dist because it is generated by this command.
-React source changes require another build. Development on port 5173 does not
-require a production build.
+## Validation and known limits
 
-## Using the latest fixes
+Development-snapshot checks documented on **7 October 2026** included **93 passing backend tests** (one optional live test skipped), **10 frontend tests**, **12 development-mode and 12 built-frontend browser checks**, and classification checks on **10 synthetic PDFs**. These are historical development results—not a fresh test of the final cleaned distribution. The latest refinements did **not** undergo a new complete live Groq/Atlas acceptance run.
 
-Upload PDF, DOCX, or TXT records and wait for Completed. Detect from record
-prefers document headings over incidental mentions of medication or lab values.
-Previously saved other classifications require deleting and re-uploading those
-original files to be detected again; no background migration edits your records.
+Limitations to be addressed before broader use:
 
-Use All document types for a complete overview. Example:
-"Summarise all my uploaded clinical records, including diagnoses, medications,
-lab trends, investigations, encounters, and follow-up plans."
+- No OCR for scanned, image-only PDFs.
+- No unbounded or hierarchical summarization of large collections.
+- No persistent conversation history; browser refresh clears the in-memory session.
+- No original-document archive/viewer or automatic reclassification of existing records.
+- No server-side JWT revocation list or demonstrated app-level rate limiter.
+- Identifier masking is imperfect; sanitized medical text remains sensitive.
+- No completed clinical validation, production security certification, or regulatory compliance assessment.
 
-Explicit summary requests bypass top-K vector search and the specific-question
-relevance grader. They still require patient ownership, completed documents,
-source citations, privacy checks, and answer validation. The summary context
-limit is MAX_CONTEXT_CHARS, with at most 30 documents and 1000 candidate chunks.
-Exceeding it returns SUMMARY_TOO_LARGE; select a document type or narrow the request.
-Groq limits, network failures and unavailable Atlas indexes can still cause errors.
+## Security and responsible use
 
-## What gets created
+**Use only synthetic, non-sensitive demo records in public repositories.** Keep `.env`, credentials, real patient information, database dumps, local caches and uploaded documents outside version control. Do not present identifier masking as proof of HIPAA or other regulatory compliance. The application supports retrieval of documented information; it does not provide medical advice.
 
-| Command | Created or changed |
-|---|---|
-| py -3.11 -m venv .venv | backend/.venv |
-| pip install -e | Installed packages and backend package metadata |
-| Copy-Item .env.example .env | backend/.env containing your configuration |
-| Model cache command | backend/models/embeddings by default |
-| Index command | Indexes in your configured Atlas database |
-| npm ci | frontend/node_modules |
-| npm run build | frontend/dist |
-| Python imports | __pycache__ bytecode caches as needed |
+## Roadmap
 
-These generated items are needed for installation, execution, or caching; none
-are included in the clean source ZIP. Keep backend/.env private when sharing.
+- [ ] Finish live end-to-end acceptance testing and performance profiling.
+- [ ] Add image-based document OCR.
+- [ ] Introduce scalable, validated multi-stage summarization.
+- [ ] Add token revocation, rate limiting and stronger operational controls.
+- [ ] Improve evaluation coverage, clinical validation and deployment hardening.
 
-## API edition notes
+---
 
-This project uses Groq for answer generation. Set GROQ_API_KEY only in backend/.env.
-The default generation model is openai/gpt-oss-20b with strict JSON-schema output.
-Hugging Face embeddings remain local. MongoDB Atlas stores and searches records.
-No local language-model server is needed.
-
-Large summaries remain bounded by MAX_CONTEXT_CHARS and a maximum of 30 documents.
-Keep MAX_CONTEXT_CHARS=24000 initially. Increasing it does not increase Groq's
-request allowance. HTTP 413 is reported as LLM_REQUEST_TOO_LARGE, HTTP 429 as
-LLM_RATE_LIMIT, and timeouts as LLM_TIMEOUT. Narrow the request when necessary.
-This edition does not yet implement hierarchical summaries for unlimited records.
-
-Validation for this packaging update: Python source parsed, provider defaults and
-archive integrity checked. Existing runtime tests were not rerun and no live Groq
-or Atlas requests were made. Keep your existing backend/.env when replacing files.
+**Maintainer:** [GitHub — Motokid1](https://github.com/Motokid1)  
+**Reference:** Project technical overview, Groq API edition, 7 October 2026.
