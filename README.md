@@ -1,14 +1,9 @@
-<<<<<<< HEAD
 <div align="center">
-=======
-# Patient Scope 
->>>>>>> 16e8ca332f094d08ceaf7ea5bdc96d4e9311d01a
 
 # PatientScope
 
 ### Your medical records, explained with evidence.
 
-<<<<<<< HEAD
 **A patient-isolated, document-grounded medical records assistant built with LangGraph, FastAPI, MongoDB Atlas Vector Search, and Groq.**
 
 [![Python](https://img.shields.io/badge/Python-Backend-3776AB?logo=python&logoColor=white)](https://www.python.org/)
@@ -117,20 +112,12 @@ flowchart TB
     classDef model fill:#edf2fc,stroke:#4d6fb5,color:#1f3157;
     class DB storage;
     class GROQ,EMB model;
-=======
-```text
-Patient Scope/
-  frontend/     React source, public assets, package files and Vite configuration
-  backend/      API source, glossary configuration, dependency files and .env.example
-  README.md     Setup and run commands
->>>>>>> 16e8ca332f094d08ceaf7ea5bdc96d4e9311d01a
 ```
 
 **Trust boundary:** The frontend cannot choose an arbitrary patient ID for retrieval. The backend derives ownership from a validated token and rechecks documents and chunks after retrieval. This is defense-in-depth, not a claim of certified security.
 
 ### Document ingestion pipeline
 
-<<<<<<< HEAD
 ```mermaid
 flowchart LR
     A[Upload] --> B[Format / size checks]
@@ -143,18 +130,6 @@ flowchart LR
     H --> I[Processing completed]
     B -. Invalid .-> X[Controlled error]
     C -. Extraction failure .-> X
-=======
-Use Windows PowerShell with Python 3.11 and Node.js 22.12 or newer.
-Replace the path with your extracted project location.
-
-```powershell
-cd "D:\Projects - AI\Patient Scope\backend"
-py -3.11 -m venv .venv
-& ".\.venv\Scripts\python.exe" -m pip install --upgrade pip "setuptools>=77.0.3"
-& ".\.venv\Scripts\python.exe" -m pip install torch==2.14.1 --index-url https://download.pytorch.org/whl/cpu
-& ".\.venv\Scripts\python.exe" -m pip install -c requirements.lock -c requirements-huggingface.lock -e ".[huggingface]"
-& ".\.venv\Scripts\python.exe" -m pip install -c requirements.lock https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
->>>>>>> 16e8ca332f094d08ceaf7ea5bdc96d4e9311d01a
 ```
 
 Supported record categories: `prescription`, `lab_report`, `clinical_note`, `claim_document`, `diagnostic_report`, `discharge_summary`, `other`.
@@ -285,20 +260,7 @@ python -m uvicorn app.main:app --reload --port 8000
 Open another terminal from the repository root:
 
 ```powershell
-<<<<<<< HEAD
 cd frontend
-=======
-& ".\.venv\Scripts\python.exe" -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log
-```
-
-Keep this terminal open. API documentation is at http://127.0.0.1:8000/docs.
-For subsequent runs, this is the only backend command required.
-
-## 6. Start the frontend in a second terminal
-
-```powershell
-cd "D:\Projects - AI\Patient Scope\frontend"
->>>>>>> 16e8ca332f094d08ceaf7ea5bdc96d4e9311d01a
 npm ci
 npm run dev
 ```
